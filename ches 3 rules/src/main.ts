@@ -8,13 +8,14 @@ const app = document.getElementById('app');
 if (!app) throw new Error('No #app element found');
 
 const game = new GameManager();
-// In production, the server URL is set by the hosting platform
-// For GitHub Pages, use the Render server
-const IS_PRODUCTION = window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1';
+
+// Production server URL
+const SERVER_URL = 'https://chaos-chess-server.onrender.com';
+
 const network = new NetworkManager(
-  IS_PRODUCTION
-    ? 'https://chaos-chess-server.onrender.com'
-    : (window as any).__SERVER_URL__ || 'http://localhost:3001'
+  window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+    ? 'http://localhost:3001'
+    : SERVER_URL
 );
 const ui = new UIRenderer(app, game, network);
 
@@ -22,7 +23,7 @@ const ui = new UIRenderer(app, game, network);
 document.addEventListener('click', async (e) => {
   const target = e.target as HTMLElement;
 
-  // Draft card selection (local hotseat)
+  // Draft card selection
   const draftCard = target.closest('.draft-card') as HTMLElement;
   if (draftCard && !draftCard.classList.contains('locked')) {
     const index = parseInt(draftCard.dataset.ruleIndex!);
@@ -34,7 +35,6 @@ document.addEventListener('click', async (e) => {
         ui.render();
       }
     } else {
-      // Multiplayer: send to server
       const rule = game.state.draftOptions[index];
       if (rule) {
         network.selectDraftRule(rule);
@@ -89,7 +89,6 @@ document.addEventListener('click', async (e) => {
 
   // Multiplayer: cancel choice via network
   if (target.id === 'btn-cancel-choice-multi') {
-    // For multiplayer, we just clear locally and request new state
     window.__pendingChoice = null;
     if (network.connected) {
       network.requestGameState();
