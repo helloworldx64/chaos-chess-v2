@@ -9,8 +9,8 @@ if (!app) throw new Error('No #app element found');
 
 const game = new GameManager();
 
-// Production server URL
-const SERVER_URL = 'https://chaos-chess-server.onrender.com';
+// Production server URL (Railway)
+const SERVER_URL = 'https://chaos-chess-server-production.up.railway.app';
 
 const network = new NetworkManager(
   window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
