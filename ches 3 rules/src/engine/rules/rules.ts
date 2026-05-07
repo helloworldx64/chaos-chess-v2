@@ -823,17 +823,15 @@ export const ALL_RULES: RuleDefinition[] = [
     icon: '🦠',
     onTurnEnd: ctxHelper((ctx) => {
       const board = getBoard()!;
-      // Tick down all plague timers and kill when they expire
+      // Centralized status system ticks all statuses down.
+      // Here we just check for expired plague and kill, then infect a new piece.
       const all = getAllPiecesOnBoard(board);
       for (const p of all) {
         const plague = p.statuses.get('plagued');
-        if (plague) {
-          plague.turnsRemaining--;
-          if (plague.turnsRemaining <= 0) {
-            p.statuses.delete('plagued');
-            if (!p.statuses.has('invulnerable')) {
-              removePiece(board, p.position);
-            }
+        if (plague && plague.turnsRemaining <= 0) {
+          p.statuses.delete('plagued');
+          if (!p.statuses.has('invulnerable')) {
+            removePiece(board, p.position);
           }
         }
       }
