@@ -114,7 +114,12 @@ export class UIRenderer {
         return;
       }
       if (this.network.lobbyId && this.game.state.phase !== GamePhase.Playing && this.game.state.phase !== GamePhase.RuleDraft && this.game.state.phase !== GamePhase.Ended) {
-        this.renderMultiLobbyCreated();
+        // Host or guest with an established lobby
+        if (this.network.playerColor === 'white') {
+          this.renderMultiLobbyCreated();
+        } else {
+          this.renderWaitingForHost();
+        }
         return;
       }
       if (this.game.state.phase === GamePhase.Title) {
@@ -285,6 +290,50 @@ export class UIRenderer {
     this.app.querySelector('#btn-start-multi')?.addEventListener('click', () => {
       this.network.startGame();
     });
+
+    this.app.querySelector('#btn-leave-lobby')?.addEventListener('click', () => {
+      this.network.disconnect();
+      this.game.goToTitle();
+      window.__mode = 'local';
+    });
+
+    this.app.querySelector('#btn-rules-multi')?.addEventListener('click', () => {
+      this.renderAllRules();
+    });
+
+    this.app.querySelector('#btn-how-multi')?.addEventListener('click', () => {
+      this.renderHowItWorks();
+    });
+  }
+
+  renderWaitingForHost(): void {
+    const guestName = this.displayName || 'Guest';
+    const hostName = this.game.state.whitePlayer || 'Host';
+
+    this.app.innerHTML = `
+      <div class="screen active setup-screen">
+        <h2>🎮 JOINED LOBBY</h2>
+        <div class="lobby-players">
+          <div class="lobby-player host">
+            <span class="player-color-dot white"></span>
+            <span>${hostName}</span>
+            <span class="player-color-tag">WHITE</span>
+          </div>
+          <div class="lobby-vs">VS</div>
+          <div class="lobby-player guest">
+            <span class="player-color-dot black"></span>
+            <span>${guestName} (You)</span>
+            <span class="player-color-tag">BLACK</span>
+          </div>
+        </div>
+        <div id="waiting-status" style="color:var(--text-secondary);font-size:16px;margin-top:24px;text-align:center;">
+          ⏳ Waiting for ${hostName} to start the game...
+        </div>
+        <button class="btn btn-secondary" id="btn-leave-lobby">← LEAVE LOBBY</button>
+        <button class="btn btn-secondary" id="btn-rules-multi">📜 ALL RULES</button>
+        <button class="btn btn-secondary" id="btn-how-multi">📖 HOW IT WORKS</button>
+      </div>
+    `;
 
     this.app.querySelector('#btn-leave-lobby')?.addEventListener('click', () => {
       this.network.disconnect();
