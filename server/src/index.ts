@@ -212,7 +212,7 @@ function getFilteredState(gameRoom: GameRoom, playerColor: Color, socketId: stri
   const player = gameRoom.getPlayer(socketId);
 
   // Build a state that's safe to send to this specific player
-  const state = {
+  const state: Record<string, any> = {
     phase: fullState.phase,
     board: fullState.board,
     currentTurn: fullState.currentTurn,
@@ -230,10 +230,10 @@ function getFilteredState(gameRoom: GameRoom, playerColor: Color, socketId: stri
     player1Name: fullState.player1Name,
     player2Name: fullState.player2Name,
     selectedSquare: fullState.selectedSquare,
-    legalMoves: [],
+    legalMoves: [] as any[],
     draftOptions: fullState.draftOptions,
     draftForColor: fullState.draftForColor,
-    pendingChoice: null,
+    pendingChoice: null as any,
   };
 
   // Only send legal moves if the square is selected and it's this player's turn
