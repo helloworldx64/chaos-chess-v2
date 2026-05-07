@@ -29,7 +29,7 @@ export class GameManager {
       currentTurn: Color.White,
       turnNumber: 1,
       movesSinceLastDraft: 0,
-      nextDraftAt: randomInt(6, 10),
+      nextDraftAt: 6, // Every 6 half-moves = 3 full turns
       activeRules: [],
       moveHistory: [],
       eventLog: [],
@@ -62,7 +62,7 @@ export class GameManager {
     this.state.currentTurn = Color.White;
     this.state.turnNumber = 1;
     this.state.movesSinceLastDraft = 0;
-    this.state.nextDraftAt = randomInt(6, 10);
+    this.state.nextDraftAt = 6; // Every 6 half-moves = 3 full turns
     this.state.activeRules = [];
     this.state.moveHistory = [];
     this.state.eventLog = [{ turn: 0, message: 'Game started! White moves first.', type: 'system' }];
@@ -157,6 +157,7 @@ export class GameManager {
       }
       removePiece(this.state.board, { row: modified.to.row, col: modified.to.col });
       this.engine.applyOnCapture(this.state, captured, modified.piece);
+      this.engine.applyOnDeath(this.state, captured, 'capture');
       if (captured.type === PieceType.King && this.checkGameEnd()) {
         this.state.selectedSquare = null;
         this.state.legalMoves = [];
@@ -263,7 +264,7 @@ export class GameManager {
 
     this.state.draftOptions = [];
     this.state.movesSinceLastDraft = 0;
-    this.state.nextDraftAt = randomInt(6, 10); // next draft in random 3-5 turns (6-10 half-moves)
+    this.state.nextDraftAt = 6; // Every 6 half-moves = 3 full turns
 
     const afterDraft = () => {
       // Switch turns now that draft is resolved

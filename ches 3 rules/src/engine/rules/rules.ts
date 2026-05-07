@@ -121,28 +121,6 @@ export const ALL_RULES: RuleDefinition[] = [
   },
 
   {
-    id: 'going_woke',
-    name: 'Going Woke',
-    description: 'All pieces in the right half of the board are pushed one square to the left.',
-    flavor: 'Leftist agenda in action!',
-    category: RuleCategory.Movement,
-    duration: RuleDuration.Instant,
-    baseTurns: 0,
-    icon: '⬅️',
-    onActivate: ctxHelper((ctx) => {
-      const board = getBoard()!;
-      for (let r = 0; r < 8; r++) {
-        for (let c = 4; c < 8; c++) {
-          const piece = board[r][c].piece;
-          if (piece && inBounds(r, c - 1) && !board[r][c - 1].piece) {
-            movePiece(board, { row: r, col: c }, { row: r, col: c - 1 });
-          }
-        }
-      }
-    }),
-  },
-
-  {
     id: 'portal_three',
     name: 'Portal Three',
     description: 'Two random empty squares become linked portals. At the end of each turn, pieces on these squares swap places. Portals are visible on the board.',
@@ -1028,12 +1006,21 @@ export const ALL_RULES: RuleDefinition[] = [
     duration: RuleDuration.Timed,
     baseTurns: 6,
     icon: '🛡️',
+    data: { ownerColor: null as Color | null },
+    onActivate: ctxHelper((ctx) => {
+      const rule = findActiveRule(ctx.activeRules, 'force_field');
+      if (rule) rule.data.ownerColor = ctx.currentColor;
+    }),
     onGetMoves: ctxHelper((ctx, piece: Piece, moves: Move[]) => {
       const board = getBoard()!;
+      const rule = findActiveRule(ctx.activeRules, 'force_field');
+      if (!rule) return moves;
+      const ownerColor = rule.data.ownerColor as Color;
+      if (!ownerColor) return moves;
+      // Block enemy pieces from entering the owner's back ranks
       return moves.filter(m => {
-        // For each enemy piece, block entry into the defending player's back ranks
-        const defenderColor = oppositeColor(piece.color);
-        const protectedRows = defenderColor === Color.White ? [6, 7] : [0, 1];
+        if (piece.color === ownerColor) return true; // owner's pieces can go anywhere
+        const protectedRows = ownerColor === Color.White ? [6, 7] : [0, 1];
         return !protectedRows.includes(m.to.row);
       });
     }),
@@ -1098,27 +1085,6 @@ export const ALL_RULES: RuleDefinition[] = [
         }
         return m;
       }).flat();
-    }),
-  },
-
-  {
-    id: 'born_again_christian',
-    name: 'Born Again Christian',
-    description: 'All queens on the board are transformed into bishops.',
-    flavor: 'They saw the light!',
-    category: RuleCategory.Transformation,
-    duration: RuleDuration.Instant,
-    baseTurns: 0,
-    icon: '✝️',
-    onActivate: ctxHelper((ctx) => {
-      const board = getBoard()!;
-      for (const row of board) {
-        for (const sq of row) {
-          if (sq.piece && sq.piece.type === PieceType.Queen) {
-            sq.piece.type = PieceType.Bishop;
-          }
-        }
-      }
     }),
   },
 
@@ -1545,16 +1511,6 @@ export const ALL_RULES: RuleDefinition[] = [
   },
 
   {
-    id: 'sudden_death',
-    name: 'Sudden Death Overtime',
-    description: 'After N turns, the game enters sudden death mode. If any piece dies, the game ends in a draw.',
-    flavor: 'NEXT KILL WINDS THE GAME!',
-    category: RuleCategory.Meta,
-    duration: RuleDuration.Timed,
-    baseTurns: 8,
-    icon: '⏱️',
-  },
-  {
     id: 'mystery_box',
     name: 'Mystery Box',
     description: 'A random square gets a mystery box. The first piece to step on it triggers a random instant rule effect.',
@@ -1671,17 +1627,6 @@ export const ALL_RULES: RuleDefinition[] = [
         }
       }
     }),
-  },
-
-  {
-    id: 'fog_of_war',
-    name: 'Fog of War',
-    description: 'You can only see squares within 2 squares of your pieces.',
-    flavor: 'I can\'t see!',
-    category: RuleCategory.Board,
-    duration: RuleDuration.Timed,
-    baseTurns: 6,
-    icon: '🌫️',
   },
 
   {
@@ -2004,6 +1949,13 @@ export const ALL_RULES: RuleDefinition[] = [
         board[empty.row][empty.col].markType = 'wall';
       }
     }),
+    onGetMoves: ctxHelper((ctx, piece: Piece, moves: Move[]) => {
+      const board = getBoard()!;
+      return moves.filter(m => {
+        const sq = board[m.to.row][m.to.col];
+        return !(sq.isMarked && sq.markType === 'wall');
+      });
+    }),
   },
 
   {
@@ -2207,18 +2159,6 @@ export const ALL_RULES: RuleDefinition[] = [
       };
       board[piece.position.row][piece.position.col].piece = zombie;
     }),
-  },
-
-  {
-    id: 'draft_dodge',
-    name: 'Draft Dodger',
-    description: 'The player who did NOT choose the last rule gets to choose the next one.',
-    flavor: 'Not it!',
-    category: RuleCategory.Meta,
-    duration: RuleDuration.Permanent,
-    baseTurns: 0,
-    icon: '🏃',
-    // Handled in game logic
   },
 
   {

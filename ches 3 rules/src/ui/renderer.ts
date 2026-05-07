@@ -58,7 +58,7 @@ export class UIRenderer {
     this.app.innerHTML = `
       <div class="screen active title-screen">
         <h1>CHAOS CHESS</h1>
-        <p class="tagline">90 game-breaking rules. 3-turn chaos drafts. Kings that explode.<br>Normal chess was never the point.</p>
+        <p class="tagline">80 game-breaking rules. 3-turn chaos drafts. Kings that explode.<br>Normal chess was never the point.</p>
         <div class="title-buttons">
           <button class="btn btn-primary" id="btn-start">⚔️ PLAY</button>
           <button class="btn btn-secondary" id="btn-rules">📜 ALL RULES</button>
@@ -388,7 +388,7 @@ export class UIRenderer {
 
   renderDraftCountdown(): string {
     const turnsUntil = this.game.getTurnsUntilDraft();
-    if (turnsUntil <= 0 || turnsUntil > 3) return '';
+    if (turnsUntil <= 0) return '';
     return `<div class="draft-countdown">🎲 Next chaos in <strong>${turnsUntil}</strong> turn${turnsUntil !== 1 ? 's' : ''}</div>`;
   }
 
