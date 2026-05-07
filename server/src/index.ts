@@ -41,6 +41,10 @@ io.on('connection', (socket: Socket) => {
     const gameRoom = new GameRoom(lobby.id, lobby.code);
     gameRooms.set(lobby.id, gameRoom);
 
+    // *** FIX: Add the host player to the GameRoom ***
+    gameRoom.addPlayer(socket.id, playerName || 'Player', socket);
+    console.log(`[+] Host ${playerName} added to GameRoom ${lobby.id} as white`);
+
     callback({
       success: true,
       lobbyId: lobby.id,
@@ -61,6 +65,10 @@ io.on('connection', (socket: Socket) => {
     console.log(`[*] Player ${playerName} joined lobby ${lobby.code}`);
 
     const gameRoom = gameRooms.get(lobby.id)!;
+
+    // *** FIX: Add the guest player to the GameRoom ***
+    gameRoom.addPlayer(socket.id, playerName || 'Player 2', socket);
+    console.log(`[+] Guest ${playerName} added to GameRoom ${lobby.id} as black`);
 
     // Notify the host that someone joined
     io.to(`lobby:${lobby.id}`).emit('player_joined', {
