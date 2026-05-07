@@ -14,7 +14,6 @@ services:
   - type: web
     name: chaos-chess-frontend
     env: static
-    region: oregon
     plan: free
     buildCommand: cd 'ches 3 rules' && npm install && npm run build
     staticPublishPath: ./ches 3 rules/dist
