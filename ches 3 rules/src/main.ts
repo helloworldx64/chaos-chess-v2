@@ -8,9 +8,13 @@ const app = document.getElementById('app');
 if (!app) throw new Error('No #app element found');
 
 const game = new GameManager();
+// In production, the server URL is set by the hosting platform
+// For GitHub Pages, use the Render server
+const IS_PRODUCTION = window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1';
 const network = new NetworkManager(
-  // Use production URL or localhost
-  (window as any).__SERVER_URL__ || 'http://localhost:3001'
+  IS_PRODUCTION
+    ? 'https://chaos-chess-server.onrender.com'
+    : (window as any).__SERVER_URL__ || 'http://localhost:3001'
 );
 const ui = new UIRenderer(app, game, network);
 
