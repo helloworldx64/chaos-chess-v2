@@ -5,6 +5,7 @@ import { findKing } from '../engine/board';
 import { generateRawMoves } from '../engine/moves';
 import { ALL_RULES } from '../engine/rules/rules';
 import { RuleCategory } from '../engine/types';
+import { NetworkManager } from '../network/NetworkManager';
 
 const PIECE_CHARS_BLACK: Record<PieceType, string> = {
   [PieceType.King]: '♚',
@@ -27,11 +28,15 @@ const PIECE_CHARS_WHITE: Record<PieceType, string> = {
 export class UIRenderer {
   private app: HTMLElement;
   private game: GameManager;
+  private network: NetworkManager;
   private toasts: HTMLElement | null = null;
+  private displayName: string = '';
 
-  constructor(app: HTMLElement, game: GameManager) {
+  constructor(app: HTMLElement, game: GameManager, network: NetworkManager) {
     this.app = app;
     this.game = game;
+    this.network = network;
+    this.setupNetworkListeners();
     this.game.onStateChange = () => {
       if (this.game.state.pendingToast) {
         this.showToast(this.game.state.pendingToast.message, this.game.state.pendingToast.icon);
@@ -42,8 +47,82 @@ export class UIRenderer {
     this.render();
   }
 
+  setupNetworkListeners(): void {
+    this.network.onGameState = (data: any) => {
+      this.applyServerState(data);
+    };
+
+    this.network.onPlayerJoined = (data: any) => {
+      this.render();
+    };
+
+    this.network.onGameStarted = (data: any) => {
+      window.__mode = 'multi';
+      this.render();
+    };
+
+    this.network.onGameOver = (data: any) => {
+      this.render();
+    };
+
+    this.network.onPlayerDisconnected = (data: any) => {
+      this.showToast(`⚠️ ${data.playerName} disconnected!`, '⚠️');
+    };
+  }
+
+  applyServerState(data: any): void {
+    if (!data) return;
+    // Apply phase first
+    this.game.state.phase = data.phase;
+    
+    // Apply game state from server
+    if (data.board) this.game.state.board = data.board;
+    if (data.currentTurn !== undefined) this.game.state.currentTurn = data.currentTurn;
+    if (data.turnNumber !== undefined) this.game.state.turnNumber = data.turnNumber;
+    if (data.movesSinceLastDraft !== undefined) this.game.state.movesSinceLastDraft = data.movesSinceLastDraft;
+    if (data.nextDraftAt !== undefined) this.game.state.nextDraftAt = data.nextDraftAt;
+    if (data.activeRules) this.game.state.activeRules = data.activeRules;
+    if (data.moveHistory) this.game.state.moveHistory = data.moveHistory;
+    if (data.eventLog) this.game.state.eventLog = data.eventLog;
+    if (data.whitePlayer) this.game.state.whitePlayer = data.whitePlayer;
+    if (data.blackPlayer) this.game.state.blackPlayer = data.blackPlayer;
+    if (data.winner !== undefined) this.game.state.winner = data.winner;
+    if (data.draw !== undefined) this.game.state.draw = data.draw;
+    if (data.endCause) this.game.state.endCause = data.endCause;
+    if (data.selectedSquare) this.game.state.selectedSquare = data.selectedSquare;
+    if (data.legalMoves) this.game.state.legalMoves = data.legalMoves;
+    if (data.draftOptions) this.game.state.draftOptions = data.draftOptions;
+    if (data.draftForColor !== undefined) this.game.state.draftForColor = data.draftForColor;
+    
+    // Pending choice only if it's for this player
+    if (data.pendingChoice) {
+      this.game.state.pendingChoice = data.pendingChoice;
+    } else {
+      this.game.state.pendingChoice = null;
+    }
+
+    this.render();
+  }
+
   render(): void {
     this.app.innerHTML = '';
+    
+    // If in multiplayer mode and not in a game, show lobby screens
+    if (window.__mode === 'multi') {
+      if (this.network.code && !this.network.lobbyId) {
+        this.renderMultiLobbyCreated();
+        return;
+      }
+      if (this.network.lobbyId && this.game.state.phase !== GamePhase.Playing && this.game.state.phase !== GamePhase.RuleDraft && this.game.state.phase !== GamePhase.Ended) {
+        this.renderMultiLobbyCreated();
+        return;
+      }
+      if (this.game.state.phase === GamePhase.Title) {
+        this.renderTitle();
+        return;
+      }
+    }
+
     switch (this.game.state.phase) {
       case GamePhase.Title: this.renderTitle(); break;
       case GamePhase.Setup: this.renderSetup(); break;
@@ -59,21 +138,165 @@ export class UIRenderer {
       <div class="screen active title-screen">
         <h1>CHAOS CHESS</h1>
         <p class="tagline">80 game-breaking rules. 3-turn chaos drafts. Kings that explode.<br>Normal chess was never the point.</p>
+        
+        <div class="name-input-container">
+          <label>Your Display Name</label>
+          <input type="text" id="input-display-name" placeholder="Enter your name..." value="${this.displayName || 'Player'}">
+        </div>
+
         <div class="title-buttons">
-          <button class="btn btn-primary" id="btn-start">⚔️ PLAY</button>
+          <button class="btn btn-primary" id="btn-local">🎮 LOCAL HOTSEAT</button>
+          <button class="btn btn-primary" id="btn-create-multi">🌐 CREATE MULTIPLAYER LOBBY</button>
+          <button class="btn btn-primary" id="btn-join-multi">🔗 JOIN LOBBY VIA CODE</button>
           <button class="btn btn-secondary" id="btn-rules">📜 ALL RULES</button>
           <button class="btn btn-secondary" id="btn-how">📖 HOW IT WORKS</button>
         </div>
       </div>
     `;
-    this.app.querySelector('#btn-start')?.addEventListener('click', () => {
+
+    this.app.querySelector('#input-display-name')?.addEventListener('input', (e: any) => {
+      this.displayName = e.target.value || 'Player';
+    });
+
+    this.app.querySelector('#btn-local')?.addEventListener('click', () => {
+      window.__mode = 'local';
       this.game.state.phase = GamePhase.Setup;
       this.render();
     });
+
+    this.app.querySelector('#btn-create-multi')?.addEventListener('click', async () => {
+      const name = this.displayName || 'Player';
+      window.__mode = 'multi';
+      try {
+        if (!this.network.connected) {
+          await this.network.connect();
+        }
+        const result = await this.network.createLobby(name);
+        this.game.state.whitePlayer = name;
+        this.game.state.blackPlayer = 'Waiting for opponent...';
+        this.renderMultiLobbyCreated();
+      } catch (err) {
+        this.showToast('❌ Failed to create lobby', '❌');
+      }
+    });
+
+    this.app.querySelector('#btn-join-multi')?.addEventListener('click', () => {
+      window.__mode = 'multi';
+      this.renderJoinLobby();
+    });
+
     this.app.querySelector('#btn-rules')?.addEventListener('click', () => {
       this.renderAllRules();
     });
     this.app.querySelector('#btn-how')?.addEventListener('click', () => {
+      this.renderHowItWorks();
+    });
+  }
+
+  renderJoinLobby(): void {
+    this.app.innerHTML = `
+      <div class="screen active setup-screen">
+        <h2>🔗 JOIN LOBBY</h2>
+        <div class="setup-container" style="flex-direction:column;gap:16px;">
+          <div class="player-setup" style="width:100%;">
+            <label>Your Name</label>
+            <input type="text" id="join-name" placeholder="Enter name..." value="${this.displayName || 'Player 2'}">
+          </div>
+          <div class="player-setup" style="width:100%;">
+            <label>Lobby Code</label>
+            <input type="text" id="join-code" placeholder="Enter 6-character code..." style="text-transform:uppercase;letter-spacing:4px;font-size:20px;text-align:center;">
+          </div>
+        </div>
+        <button class="btn btn-primary" id="btn-join-now">🚪 JOIN LOBBY</button>
+        <div id="join-status" style="margin-top:12px;color:var(--text-secondary);font-size:14px;"></div>
+        <button class="btn btn-secondary" id="btn-back-join" style="margin-top:12px;">← BACK</button>
+      </div>
+    `;
+
+    this.app.querySelector('#btn-join-now')?.addEventListener('click', async () => {
+      const code = (this.app.querySelector('#join-code') as HTMLInputElement).value.trim().toUpperCase();
+      const name = (this.app.querySelector('#join-name') as HTMLInputElement).value || 'Player 2';
+      if (code.length < 4) {
+        this.app.querySelector('#join-status')!.textContent = '⚠️ Please enter a valid code';
+        return;
+      }
+      try {
+        if (!this.network.connected) {
+          await this.network.connect();
+        }
+        const result = await this.network.joinLobby(code, name);
+        this.displayName = name;
+        this.game.state.blackPlayer = name;
+        // Get game state from server
+        this.network.requestGameState();
+      } catch (err: any) {
+        this.app.querySelector('#join-status')!.textContent = `⚠️ ${err.message}`;
+      }
+    });
+
+    this.app.querySelector('#btn-back-join')?.addEventListener('click', () => {
+      this.game.state.phase = GamePhase.Title;
+      this.render();
+    });
+  }
+
+  renderMultiLobbyCreated(): void {
+    const lobbyCode = this.network.code || '------';
+    const hostName = this.displayName || 'Host';
+
+    this.app.innerHTML = `
+      <div class="screen active setup-screen">
+        <h2>🌐 LOBBY CREATED</h2>
+        <div class="lobby-code-display">
+          <div class="lobby-code-label">Share this code with your opponent:</div>
+          <div class="lobby-code-value">${lobbyCode}</div>
+        </div>
+        <div class="lobby-players">
+          <div class="lobby-player host">
+            <span class="player-color-dot white"></span>
+            <span>${hostName} (You)</span>
+            <span class="player-color-tag">WHITE</span>
+          </div>
+          <div class="lobby-vs">VS</div>
+          <div class="lobby-player guest" id="guest-slot">
+            <span class="player-color-dot black"></span>
+            <span id="guest-name">Waiting for opponent...</span>
+            <span class="player-color-tag">BLACK</span>
+          </div>
+        </div>
+        <div id="lobby-status" style="color:var(--text-secondary);font-size:14px;margin-top:12px;">Waiting for a player to join...</div>
+        <button class="btn btn-primary" id="btn-start-multi" style="display:none;">🎲 START GAME</button>
+        <button class="btn btn-secondary" id="btn-leave-lobby">← LEAVE LOBBY</button>
+        <button class="btn btn-secondary" id="btn-rules-multi">📜 ALL RULES</button>
+        <button class="btn btn-secondary" id="btn-how-multi">📖 HOW IT WORKS</button>
+      </div>
+    `;
+
+    // Listen for player join
+    this.network.onPlayerJoined = (data: any) => {
+      const guestEl = this.app.querySelector('#guest-name');
+      if (guestEl) guestEl.textContent = data.guestName || 'Opponent';
+      const statusEl = this.app.querySelector('#lobby-status');
+      if (statusEl) statusEl.textContent = `${data.guestName || 'Opponent'} joined! Ready to play.`;
+      const startBtn = this.app.querySelector('#btn-start-multi') as HTMLElement;
+      if (startBtn) startBtn.style.display = 'inline-flex';
+    };
+
+    this.app.querySelector('#btn-start-multi')?.addEventListener('click', () => {
+      this.network.startGame();
+    });
+
+    this.app.querySelector('#btn-leave-lobby')?.addEventListener('click', () => {
+      this.network.disconnect();
+      this.game.goToTitle();
+      window.__mode = 'local';
+    });
+
+    this.app.querySelector('#btn-rules-multi')?.addEventListener('click', () => {
+      this.renderAllRules();
+    });
+
+    this.app.querySelector('#btn-how-multi')?.addEventListener('click', () => {
       this.renderHowItWorks();
     });
   }
@@ -116,13 +339,15 @@ export class UIRenderer {
 
   renderGame(): void {
     const s = this.game.state;
+    const isMulti = window.__mode === 'multi';
 
     this.app.innerHTML = `
       <div class="screen active game-screen" style="position:relative;">
-        <button class="menu-btn" id="btn-pause">⏸ MENU</button>
+        <button class="menu-btn" id="btn-pause">⏸ ${isMulti ? 'MENU' : 'MENU'}</button>
         <div id="toast-container" style="position:fixed;top:20px;left:50%;transform:translateX(-50%);z-index:200;display:flex;flex-direction:column;gap:8px;pointer-events:none;"></div>
         <div class="left-panel">
           ${this.renderTurnIndicator()}
+          ${isMulti ? `<div class="player-color-badge ${this.network.playerColor === 'white' ? 'white-turn' : 'black-turn'}">You are ${this.network.playerColor === 'white' ? 'WHITE' : 'BLACK'}</div>` : ''}
           ${this.renderDraftCountdown()}
           <div class="active-rules-panel">
             <h3>⚡ ACTIVE RULES</h3>
@@ -168,7 +393,6 @@ export class UIRenderer {
 
     this.app.querySelector('#chess-board')?.addEventListener('click', (e) => {
       const s = this.game.state;
-      // If there's a pending choice, handle it specially
       if (s.pendingChoice) {
         const target = (e.target as HTMLElement).closest('.square') as HTMLElement;
         if (!target) return;
@@ -181,7 +405,12 @@ export class UIRenderer {
       if (!target) return;
       const row = parseInt(target.dataset.row!);
       const col = parseInt(target.dataset.col!);
-      this.game.selectSquare({ row, col });
+
+      if (isMulti) {
+        this.network.selectSquare(row, col);
+      } else {
+        this.game.selectSquare({ row, col });
+      }
     });
   }
 
@@ -191,7 +420,6 @@ export class UIRenderer {
 
     const sq = this.game.state.board[row][col];
 
-    // Validate selection
     if (choice.type === 'selectFriendlyPiece') {
       if (!sq.piece || sq.piece.color !== choice.playerColor) return;
       if (choice.excludeKing && sq.piece.type === PieceType.King) return;
@@ -208,9 +436,8 @@ export class UIRenderer {
       if (choice.onlyTypes && !choice.onlyTypes.includes(sq.piece.type)) return;
     }
 
-    // Add to selection
     const posKey = `${row},${col}`;
-    const already = choice.selected.some(s => {
+    const already = choice.selected.some((s: any) => {
       if (typeof s === 'string') return s === posKey;
       const p = s as Position;
       return p.row === row && p.col === col;
@@ -223,10 +450,13 @@ export class UIRenderer {
 
     choice.selected.push(selection);
 
-    // If enough selections made, complete
     if (choice.selected.length >= choice.count) {
-      this.game.resolveChoice(choice.selected);
-      this.render();
+      if (window.__mode === 'multi') {
+        this.network.resolveChoice(choice.selected);
+      } else {
+        this.game.resolveChoice(choice.selected);
+        this.render();
+      }
     } else {
       this.render();
     }
@@ -304,7 +534,6 @@ export class UIRenderer {
         const isLastMoveFrom = lastMove && lastMove.from.row === r && lastMove.from.col === c;
         const isLastMoveTo = lastMove && lastMove.to.row === r && lastMove.to.col === c;
 
-        // Choice target highlighting
         let isChoiceTarget = false;
         const pc = s.pendingChoice;
         if (pc) {
@@ -339,9 +568,7 @@ export class UIRenderer {
         if (sq.isMarked && sq.markType === 'lava') classes += ' marked-lava';
         if (sq.isMarked && sq.markType === 'mystery') classes += ' marked-mystery';
         if (isChoiceTarget) classes += ' choice-target';
-
-        // Mines and pits are HIDDEN - not shown on board
-        // Players discover them by stepping on them
+        if (sq.isPortal) classes += ' is-portal';
 
         let pieceHtml = '';
         if (sq.piece) {
@@ -351,7 +578,7 @@ export class UIRenderer {
 
           let statusBadges = '';
           for (const [key] of p.statuses) {
-            const icon = key === 'invulnerable' ? '🛡️' : key === 'frozen' ? '❄️' : key === 'plagued' ? '🦠' : key === 'webbed' ? '🕸️' : '💫';
+            const icon = key === 'invulnerable' ? '🛡️' : key === 'frozen' ? '❄️' : key === 'plagued' ? '🦠' : key === 'webbed' ? '🕸️' : key === 'bomb' ? '💥' : '💫';
             statusBadges += `<span class="status-badge">${icon}</span>`;
           }
 
@@ -395,20 +622,37 @@ export class UIRenderer {
   renderDraftOverlay(): string {
     const s = this.game.state;
     const playerName = s.draftForColor === Color.White ? s.whitePlayer : s.blackPlayer;
+    const drafterColor = s.draftForColor === Color.White ? 'White' : 'Black';
+    const isMulti = window.__mode === 'multi';
+    const isMyDraft = isMulti
+      ? ((this.network.playerColor === 'white' && s.draftForColor === Color.White) ||
+         (this.network.playerColor === 'black' && s.draftForColor === Color.Black))
+      : true;
 
     return `
       <div class="draft-overlay" id="draft-overlay">
-        <h2>🎲 ${playerName}, CHOOSE YOUR CHAOS!</h2>
+        <h2>🎲 ${isMulti && !isMyDraft ? `${playerName} IS` : `${playerName},`} CHOOSING CHAOS!</h2>
+        <p style="color:var(--text-secondary);font-size:16px;margin-bottom:16px;">
+          ${isMulti && !isMyDraft
+            ? `Your opponent (${drafterColor}) is picking a new rule...`
+            : isMulti
+            ? `Pick a rule to add chaos to the game!`
+            : `Pick a rule to add chaos to the game!`}
+        </p>
         <div class="draft-cards">
-          ${s.draftOptions.map((rule, i) => `
-            <div class="draft-card" data-rule-index="${i}">
-              <div class="card-icon">${rule.icon}</div>
-              <div class="card-name">${rule.name}</div>
-              <div class="card-desc">${rule.description}</div>
-              <div class="card-type ${rule.duration}">${rule.duration} ${rule.duration === 'timed' ? '· ' + rule.baseTurns + ' turns' : ''}</div>
-              <div style="font-size:11px;color:var(--text-secondary);text-align:center;opacity:0.7;font-style:italic;">"${rule.flavor}"</div>
-            </div>
-          `).join('')}
+          ${s.draftOptions.map((rule, i) => {
+            const isLocked = isMulti && !isMyDraft;
+            return `
+              <div class="draft-card ${isLocked ? 'locked' : ''}" data-rule-index="${i}">
+                ${isLocked ? '<div class="lock-overlay">🔒</div>' : ''}
+                <div class="card-icon">${rule.icon}</div>
+                <div class="card-name">${rule.name}</div>
+                <div class="card-desc">${rule.description}</div>
+                <div class="card-type ${rule.duration}">${rule.duration} ${rule.duration === 'timed' ? '· ' + rule.baseTurns + ' turns' : ''}</div>
+                <div style="font-size:11px;color:var(--text-secondary);text-align:center;opacity:0.7;font-style:italic;">"${rule.flavor}"</div>
+              </div>
+            `;
+          }).join('')}
         </div>
       </div>
     `;
@@ -419,23 +663,36 @@ export class UIRenderer {
     if (!pc) return '';
     const playerName = pc.playerColor === Color.White ? this.game.state.whitePlayer : this.game.state.blackPlayer;
     const remaining = pc.count - pc.selected.length;
+    const isMulti = window.__mode === 'multi';
+    const isMyChoice = isMulti
+      ? ((this.network.playerColor === 'white' && pc.playerColor === Color.White) ||
+         (this.network.playerColor === 'black' && pc.playerColor === Color.Black))
+      : true;
+
+    if (isMulti && !isMyChoice) {
+      return `
+        <div class="draft-overlay" id="choice-overlay">
+          <h2>⏳ ${playerName} is making a choice...</h2>
+          <p style="color:var(--text-secondary);font-size:18px;">Waiting for ${playerName} to ${pc.message.toLowerCase()}...</p>
+        </div>
+      `;
+    }
+
     return `
       <div class="draft-overlay" id="choice-overlay">
         <h2>👆 ${playerName}: ${pc.message}</h2>
         <p style="color:var(--text-secondary);font-size:18px;">${remaining > 0 ? `Select ${remaining} more...` : 'Click a valid target on the board'}</p>
-        <div style="display:flex;gap:12px;margin-top:16px;">
-          <button class="btn btn-danger" id="btn-cancel-choice" style="font-size:14px;padding:10px 24px;">✕ CANCEL</button>
-        </div>
       </div>
     `;
   }
 
   renderPauseOverlay(): string {
+    const isMulti = window.__mode === 'multi';
     return `
       <div class="pause-overlay">
-        <h2>⏸ PAUSED</h2>
+        <h2>⏸ ${isMulti ? 'GAME PAUSED' : 'PAUSED'}</h2>
         <button class="btn btn-primary" id="btn-resume">▶ RESUME</button>
-        <button class="btn btn-secondary" id="btn-restart">🔄 RESTART</button>
+        ${isMulti ? '' : '<button class="btn btn-secondary" id="btn-restart">🔄 RESTART</button>'}
         <button class="btn btn-secondary" id="btn-rules-paused">📜 ALL RULES</button>
         <button class="btn btn-secondary" id="btn-how-paused">📖 HOW IT WORKS</button>
         <button class="btn btn-danger" id="btn-quit">🚪 QUIT TO TITLE</button>
@@ -450,6 +707,7 @@ export class UIRenderer {
     const winnerName = winner === Color.White ? s.whitePlayer : s.blackPlayer;
     const loserName = winner === Color.White ? s.blackPlayer : s.whitePlayer;
     const winnerColor = winner === Color.White ? 'White' : 'Black';
+    const isMulti = window.__mode === 'multi';
 
     this.app.innerHTML = `
       <div class="screen active end-screen">
@@ -457,7 +715,7 @@ export class UIRenderer {
         <h2 class="${isDraw ? 'draw-text' : 'winner-text'}">${isDraw ? 'DRAW!' : `${winnerName} WINS!`}</h2>
         ${isDraw ? `<p class="end-cause">${s.endCause}</p>` : `<p class="end-cause">${winnerName} (${winnerColor}) defeated ${loserName}<br>${s.endCause}</p>`}
         <div class="title-buttons">
-          <button class="btn btn-primary" id="btn-rematch">🔄 REMATCH</button>
+          ${isMulti ? '' : '<button class="btn btn-primary" id="btn-rematch">🔄 REMATCH</button>'}
           <button class="btn btn-secondary" id="btn-title-end">🏠 TITLE SCREEN</button>
         </div>
       </div>
@@ -469,6 +727,7 @@ export class UIRenderer {
     });
     this.app.querySelector('#btn-title-end')?.addEventListener('click', () => {
       this.game.goToTitle();
+      window.__mode = 'local';
     });
   }
 
@@ -513,7 +772,6 @@ export class UIRenderer {
     `;
 
     this.app.querySelector('#btn-back-rules')?.addEventListener('click', () => {
-      this.game.state.phase = GamePhase.Title;
       this.render();
     });
   }
@@ -541,12 +799,20 @@ export class UIRenderer {
           <h3>🔄 RULE OVERLAP RESOLUTION</h3>
           <p>Rules interact in this priority order:</p>
           <ol>
-            <li><strong>Invulnerability &gt; Death</strong> — Invulnerable pieces survive ANY death effect. Surrounding pieces still die normally.</li>
-            <li><strong>Specific &gt; General</strong> — A rule targeting specific piece types overrides general movement rules.</li>
-            <li><strong>Newer &gt; Older</strong> — When two rules directly conflict, the most recently drafted rule wins.</li>
+            <li><strong>Invulnerability > Death</strong> — Invulnerable pieces survive ANY death effect. Surrounding pieces still die normally.</li>
+            <li><strong>Specific > General</strong> — A rule targeting specific piece types overrides general movement rules.</li>
+            <li><strong>Newer > Older</strong> — When two rules directly conflict, the most recently drafted rule wins.</li>
             <li><strong>King death is FINAL</strong> — No rule saves a king unless it specifically grants "invulnerable" to the king.</li>
           </ol>
-          <p><strong>Example:</strong> "Bishops cannot die" + "Living Bomb" on a bishop → When bomb explodes, bishop survives, but adjacent pieces still get hit.</p>
+
+          <h3>🌐 MULTIPLAYER</h3>
+          <p>Want to play against a friend online?</p>
+          <ul>
+            <li><strong>Create Lobby</strong> — Get a 6-character code to share with your opponent</li>
+            <li><strong>Join Lobby</strong> — Enter the code your friend shared</li>
+            <li><strong>Server-authoritative</strong> — All game logic runs on the server, preventing cheating</li>
+            <li><strong>Both see the same board</strong> — Rule draft choices are visible to both players (only the drafter can choose)</li>
+          </ul>
 
           <h3>🏆 WIN CONDITIONS</h3>
           <ul>
@@ -555,7 +821,6 @@ export class UIRenderer {
             <li><strong>Checkmate:</strong> Still works.</li>
             <li><strong>Stalemate:</strong> Also a draw.</li>
           </ul>
-          <p>The engine checks for king death after <em>every</em> piece removal, not just during normal moves.</p>
 
           <h3>⚠️ ILLEGAL STATES ARE ALLOWED</h3>
           <p>This is NOT FIDE chess. If rules put your king in check but only pawns can move — that's fine. If a tornado drags your king into danger — that's chaos. The engine always obeys active rules.</p>
@@ -576,7 +841,6 @@ export class UIRenderer {
     `;
 
     this.app.querySelector('#btn-back-how')?.addEventListener('click', () => {
-      this.game.state.phase = GamePhase.Title;
       this.render();
     });
   }
