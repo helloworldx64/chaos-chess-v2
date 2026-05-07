@@ -1,0 +1,27 @@
+services:
+  - type: web
+    name: chaos-chess-server
+    env: node
+    region: oregon
+    plan: free
+    buildCommand: cd server && npm install && npm run build
+    startCommand: cd server && node dist/index.js
+    healthCheckPath: /health
+    envVars:
+      - key: PORT
+        value: 3001
+
+  - type: web
+    name: chaos-chess-frontend
+    env: static
+    region: oregon
+    plan: free
+    buildCommand: cd 'ches 3 rules' && npm install && npm run build
+    staticPublishPath: ./ches 3 rules/dist
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    envVars:
+      - key: __SERVER_URL__
+        value: https://chaos-chess-server.onrender.com
