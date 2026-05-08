@@ -44,6 +44,8 @@ export class GameManager {
       endCause: '',
       draftOptions: [],
       draftForColor: Color.White,
+      lastDrafter: null,
+      deathMarkers: [],
       pendingAnimations: [],
       pendingToast: null,
       pendingChoice: null,
@@ -171,6 +173,7 @@ export class GameManager {
     if (destSquare.hasMine || destSquare.isPit) {
       const cause = destSquare.hasMine ? 'mine' : 'pit';
       this.logEvent(`${fromPiece.color} ${fromPiece.type} stepped on a ${cause}!`, 'death');
+      this.addDeathMarker({ row: modified.to.row, col: modified.to.col }, destSquare.hasMine ? '💥' : '🕳️');
       removePiece(this.state.board, { row: modified.from.row, col: modified.from.col });
       this.engine.applyOnDeath(this.state, fromPiece, cause);
       this.state.selectedSquare = null;
@@ -250,7 +253,15 @@ export class GameManager {
     const exclude = this.state.activeRules.map(r => r.definition.id);
     const options = this.registry.getRandomDraft(exclude);
     this.state.draftOptions = options;
-    this.state.draftForColor = this.state.currentTurn;
+
+    // Alternate drafters: switch to the other color if lastDrafter was the currentTurn
+    if (this.state.lastDrafter !== null) {
+      this.state.draftForColor = this.state.lastDrafter === Color.White ? Color.Black : Color.White;
+    } else {
+      this.state.draftForColor = this.state.currentTurn;
+    }
+    this.state.lastDrafter = this.state.draftForColor;
+
     this.state.phase = GamePhase.RuleDraft;
     this.logEvent(`Rule draft! ${this.getCurrentPlayerName()} picks a new rule.`, 'rule');
     this.onStateChange?.();
@@ -372,6 +383,23 @@ export class GameManager {
     }
 
     return false;
+  }
+
+  private _deathMarkerIdCounter = 0;
+  addDeathMarker(pos: Position, icon: string = '💥'): void {
+    const id = ++this._deathMarkerIdCounter;
+    this.state.deathMarkers.push({
+      position: { ...pos },
+      icon,
+      color: icon === '💀' ? '#ff4444' : icon === '💥' ? '#ff8800' : '#ffdd00',
+      id,
+    });
+    this.onStateChange?.();
+    // Auto-clear after 1.5 seconds
+    setTimeout(() => {
+      this.state.deathMarkers = this.state.deathMarkers.filter(d => d.id !== id);
+      this.onStateChange?.();
+    }, 1500);
   }
 
   getAllPieces(): Piece[] {

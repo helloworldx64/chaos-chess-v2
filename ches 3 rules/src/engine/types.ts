@@ -122,6 +122,13 @@ export enum GamePhase {
   Ended = 'ended',
 }
 
+export interface DeathMarker {
+  position: Position;
+  icon: string;
+  color: string;
+  id: number;
+}
+
 export interface GameState {
   phase: GamePhase;
   board: BoardSquare[][];
@@ -144,6 +151,8 @@ export interface GameState {
   endCause: string;
   draftOptions: RuleDefinition[];
   draftForColor: Color;
+  lastDrafter: Color | null;
+  deathMarkers: DeathMarker[];
   pendingAnimations: AnimationEvent[];
   pendingToast: { message: string; icon: string } | null;
   pendingChoice: PendingChoice | null;

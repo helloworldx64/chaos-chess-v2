@@ -415,11 +415,12 @@ export class UIRenderer {
           </div>
         </div>
         <div class="board-container">
-          <div class="board-wrapper">
+          <div class="board-wrapper" style="position:relative;">
             <div class="board" id="chess-board">
               ${this.renderBoard()}
               ${this.renderCheckLines()}
             </div>
+            ${this.renderDeathMarkers()}
           </div>
         </div>
         <div class="right-panel">
@@ -580,6 +581,28 @@ export class UIRenderer {
         </rect>
       </svg>
     `;
+  }
+
+  renderDeathMarkers(): string {
+    const markers = this.game.state.deathMarkers;
+    if (markers.length === 0) return '';
+    return markers.map(m => `
+      <div class="death-marker" style="
+        position:absolute;
+        top:${(m.position.row / 8 * 100)}%;
+        left:${(m.position.col / 8 * 100)}%;
+        width:12.5%;
+        height:12.5%;
+        display:flex;
+        align-items:center;
+        justify-content:center;
+        font-size:32px;
+        pointer-events:none;
+        z-index:20;
+        animation: deathMarkerPop 0.3s ease-out, deathMarkerFade 1.5s ease-out forwards;
+        text-shadow: 0 0 10px ${m.color};
+      ">${m.icon}</div>
+    `).join('');
   }
 
   renderBoard(): string {

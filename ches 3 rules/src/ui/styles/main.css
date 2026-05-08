@@ -949,6 +949,35 @@ body {
   to { transform: rotate(360deg); }
 }
 
+/* ====== DEATH MARKERS ====== */
+@keyframes deathMarkerPop {
+  0% { transform: scale(0); opacity: 0; }
+  50% { transform: scale(1.5); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+@keyframes deathMarkerFade {
+  0%, 60% { opacity: 1; }
+  100% { opacity: 0; transform: scale(0.5) translateY(-20px); }
+}
+
+.rule-badge {
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.rule-badge:hover {
+  background: rgba(255,255,255,0.12);
+  transform: translateX(2px);
+}
+.rule-badge .rule-info-icon {
+  font-size: 14px;
+  opacity: 0.6;
+  transition: opacity 0.2s;
+}
+.rule-badge:hover .rule-info-icon {
+  opacity: 1;
+}
+
 /* ====== RESPONSIVE ====== */
 @media (max-width: 1200px) {
   .game-screen {
