@@ -149,6 +149,10 @@ export class GameManager {
     const captured = this.state.board[modified.to.row][modified.to.col].piece;
     modified.captures = captured ? [captured] : [];
 
+    // Check for mines/pits on destination BEFORE moving
+    const destSquare = this.state.board[modified.to.row][modified.to.col];
+    const steppedOnMine = destSquare.hasMine || destSquare.isPit;
+
     if (captured) {
       const canCapture = this.engine.applyBeforeCapture(this.state, modified);
       if (!canCapture) {
@@ -159,33 +163,51 @@ export class GameManager {
       }
       removePiece(this.state.board, { row: modified.to.row, col: modified.to.col });
       this.engine.applyOnCapture(this.state, captured, modified.piece);
-      this.engine.applyOnDeath(this.state, captured, 'capture');
       if (captured.type === PieceType.King && this.checkGameEnd()) {
         this.state.selectedSquare = null;
         this.state.legalMoves = [];
         this.onStateChange?.();
         return;
       }
+      if (steppedOnMine) {
+        const cause = destSquare.hasMine ? 'mine' : 'pit';
+        this.logEvent(`${fromPiece.color} ${fromPiece.type} captured on a ${cause}!`, 'death');
+        this.addDeathMarker({ row: modified.to.row, col: modified.to.col }, destSquare.hasMine ? '💥' : '🕳️');
+        this.engine.applyOnDeath(this.state, fromPiece, cause);
+        this.state.selectedSquare = null;
+        this.state.legalMoves = [];
+        this.checkGameEnd();
+        this.onStateChange?.();
+        return;
+      }
+      // Execute the move so zombie can spawn on the correct square
+      movePiece(this.state.board, modified.from, modified.to);
+      // Then apply death effects (zombie spawns on destination after capturer moves)
+      this.engine.applyOnDeath(this.state, captured, 'capture');
+      if (this.checkGameEnd()) {
+        this.state.selectedSquare = null;
+        this.state.legalMoves = [];
+        this.onStateChange?.();
+        return;
+      }
+    } else {
+      if (steppedOnMine) {
+        const cause = destSquare.hasMine ? 'mine' : 'pit';
+        this.logEvent(`${fromPiece.color} ${fromPiece.type} stepped on a ${cause}!`, 'death');
+        this.addDeathMarker({ row: modified.to.row, col: modified.to.col }, destSquare.hasMine ? '💥' : '🕳️');
+        removePiece(this.state.board, { row: modified.from.row, col: modified.from.col });
+        this.engine.applyOnDeath(this.state, fromPiece, cause);
+        this.state.selectedSquare = null;
+        this.state.legalMoves = [];
+        this.checkGameEnd();
+        this.onStateChange?.();
+        return;
+      }
+      // No capture - just move
+      movePiece(this.state.board, modified.from, modified.to);
     }
 
-    // Check for mines/pits on destination
-    const destSquare = this.state.board[modified.to.row][modified.to.col];
-    if (destSquare.hasMine || destSquare.isPit) {
-      const cause = destSquare.hasMine ? 'mine' : 'pit';
-      this.logEvent(`${fromPiece.color} ${fromPiece.type} stepped on a ${cause}!`, 'death');
-      this.addDeathMarker({ row: modified.to.row, col: modified.to.col }, destSquare.hasMine ? '💥' : '🕳️');
-      removePiece(this.state.board, { row: modified.from.row, col: modified.from.col });
-      this.engine.applyOnDeath(this.state, fromPiece, cause);
-      this.state.selectedSquare = null;
-      this.state.legalMoves = [];
-      this.checkGameEnd();
-      this.onStateChange?.();
-      return;
-    }
-
-    // Execute the move
     const pieceTypeName = fromPiece.type;
-    movePiece(this.state.board, modified.from, modified.to);
 
     this.state.moveHistory.push(modified);
     this.logEvent(`${this.getCurrentPlayerName()} moved ${pieceTypeName} from ${String.fromCharCode(97 + modified.from.col)}${8 - modified.from.row} to ${String.fromCharCode(97 + modified.to.col)}${8 - modified.to.row}${captured ? ' capturing ' + captured.type : ''}`, 'move');
