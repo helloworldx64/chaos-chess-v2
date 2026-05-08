@@ -240,6 +240,9 @@ export class GameManager {
 
     this.engine.advanceTurns(this.state);
 
+    // Sync state.activeRules to remove expired/inactive rules
+    this.state.activeRules = this.state.activeRules.filter(r => r.isActive);
+
     this.onStateChange?.();
   }
 

@@ -402,10 +402,11 @@ export class UIRenderer {
             <h3>⚡ ACTIVE RULES</h3>
             ${s.activeRules.length === 0 ? '<div style="color:var(--text-secondary);font-size:13px;">No active rules yet</div>' : ''}
             ${s.activeRules.map(r => `
-              <div class="rule-badge">
+              <div class="rule-badge" data-rule-id="${r.definition.id}">
                 <span class="rule-icon">${r.definition.icon}</span>
                 <span class="rule-name">${r.definition.name}</span>
                 ${r.definition.duration === 'timed' ? `<span class="rule-timer">${r.turnsRemaining}t</span>` : `<span style="font-size:12px;color:var(--text-secondary);text-transform:uppercase;">${r.definition.duration}</span>`}
+                <span class="rule-info-icon" title="Click for details">ℹ️</span>
               </div>
             `).join('')}
           </div>
@@ -434,6 +435,18 @@ export class UIRenderer {
       ${s.phase === GamePhase.Paused ? this.renderPauseOverlay() : ''}
       ${s.pendingChoice ? this.renderChoiceOverlay() : ''}
     `;
+
+    // Rule badge click to show description tooltip
+    this.app.querySelectorAll('.rule-badge').forEach(el => {
+      el.addEventListener('click', () => {
+        const ruleId = (el as HTMLElement).dataset.ruleId;
+        if (!ruleId) return;
+        const rule = ALL_RULES.find(r => r.id === ruleId);
+        if (rule) {
+          this.showToast(`${rule.icon} ${rule.name}: ${rule.description}`, rule.icon);
+        }
+      });
+    });
 
     this.app.querySelector('#btn-pause')?.addEventListener('click', () => {
       this.game.pause();
@@ -625,14 +638,19 @@ export class UIRenderer {
           const isWhite = p.color === Color.White;
           const char = isWhite ? PIECE_CHARS_WHITE[p.type] : PIECE_CHARS_BLACK[p.type];
 
+          // statuses is a Map client-side, but plain {} when from server JSON
+          const statusEntries: [string, any][] = p.statuses instanceof Map
+            ? [...p.statuses.entries()]
+            : Object.entries(p.statuses || {});
+
           let statusBadges = '';
-          for (const [key] of p.statuses) {
+          for (const [key] of statusEntries) {
             const icon = key === 'invulnerable' ? '🛡️' : key === 'frozen' ? '❄️' : key === 'plagued' ? '🦠' : key === 'webbed' ? '🕸️' : key === 'bomb' ? '💥' : '💫';
             statusBadges += `<span class="status-badge">${icon}</span>`;
           }
 
           let pieceClasses = `piece ${isWhite ? 'white-piece' : 'black-piece'}`;
-          for (const [key] of p.statuses) {
+          for (const [key] of statusEntries) {
             pieceClasses += ` ${key}`;
           }
 

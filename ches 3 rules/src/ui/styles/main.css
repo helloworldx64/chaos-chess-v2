@@ -536,6 +536,10 @@ body {
   gap: 32px;
   z-index: 100;
   backdrop-filter: blur(8px);
+  pointer-events: none;
+}
+.draft-overlay > * {
+  pointer-events: auto;
 }
 
 .draft-overlay h2 {
